@@ -1,0 +1,233 @@
+version: '3'   
+services:
+  nginx-proxy:
+    container_name: nginx
+    image: jwilder/nginx-proxy
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - certs:/etc/nginx/certs:ro
+      - confd:/etc/nginx/conf.d
+      - vhostd:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html  
+    labels:
+      - "com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy"
+  
+  docker-gen:
+    image: jwilder/docker-gen
+    restart: always
+    command: -notify-sighup nginx-proxy -watch /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
+    depends_on:
+      - nginx-proxy
+    volumes:
+      - htpasswd:/etc/nginx/htpasswd
+      - confd:/etc/nginx/conf.d
+      - vhostd:/etc/nginx/vhost.d
+      - certs:/etc/nginx/certs:ro
+      - ./nginx.tmpl:/etc/docker-gen/templates/nginx.tmpl:ro      
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    labels:
+      - "com.github.jrcs.letsencrypt_nginx_proxy_companion.docker_gen"
+
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    restart: always
+    depends_on:
+      - nginx-proxy
+      - docker-gen
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - certs:/etc/nginx/certs
+      - confd:/etc/nginx/conf.d
+      - vhostd:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html  
+    environment:
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+
+
+  saludwildal:
+    image: odoo:13.0
+    restart: always
+    depends_on:
+      - dbsalud
+    expose:
+      - "8069"
+    volumes:
+      - odoo-web-data-salud:/var/lib/odoo
+      - ./config_salud:/etc/odoo
+      - ./addons_salud:/mnt/extra-addons
+    environment:
+      - HOST=dbsalud
+      - USER=odoo
+      - PASSWORD=odoo
+      - VIRTUAL_HOST=saludwildal.com
+      - VIRTUAL_PORT=8069
+      - LETSENCRYPT_HOST=saludwildal.com,www.saludwildal.com
+      - LETSENCRYPT_EMAIL=saludwildal@gmail.com
+
+
+  wordpress:
+    image: wordpress:latest
+    restart: always
+    expose:
+      - "80"
+    environment:
+      - WORDPRESS_DB_HOST=mysql
+      - WORDPRESS_DB_USER=root
+      - WORDPRESS_DB_PASSWORD=root
+      - WORDPRESS_DB_NAME=wordpress
+      - VIRTUAL_HOST=kairosdedios.org   
+    volumes:
+      - ~/docker/wordpress/wp-content:/var/www/html/wp-content
+      - ./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+    links:
+      - mysql:mysql
+
+
+  mysql:
+    image: mysql:8.0.13
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      - MYSQL_DATABASE=wordpress
+      - MYSQL_ROOT_PASSWORD=root
+    volumes:
+      - ~/docker/mysql-data:/var/lib/mysql
+
+  web:
+    image: odoo:12.0
+    restart: always
+    depends_on:
+      - db
+    expose:
+      - "8069"
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - ./config:/etc/odoo
+      - ./addons:/mnt/extra-addons
+    environment:
+      - VIRTUAL_HOST=maxtelperu.com,broadcastperu.com
+      - VIRTUAL_PORT=8069
+   
+              
+  alarma:
+    image: odoo:13.0
+    restart: always
+    depends_on:
+      - dbalarma
+    expose:
+      - "8069"
+    volumes:
+      - odoo-web-data-alarma:/var/lib/odoo
+      - ./config_alarma:/etc/odoo
+      - ./addons_alarma:/mnt/extra-addons
+    environment:
+      - HOST=dbalarma
+      - USER=odoo
+      - PASSWORD=odoo      
+      - VIRTUAL_HOST=alarma.maxtelperu.com
+      - VIRTUAL_PORT=8069
+      - LETSENCRYPT_HOST=alarma.maxtelperu.com
+      - LETSENCRYPT_EMAIL=alarma@gmail.com
+
+  tienda:
+    image: odoo:13.0
+    restart: always
+    depends_on:
+      - dbtienda
+    expose:
+      - "8069"
+    volumes:
+      - odoo-web-data-tienda:/var/lib/odoo
+      - ./config_tienda:/etc/odoo
+      - ./addons_tienda:/mnt/extra-addons
+    environment:
+      - HOST=dbtienda
+      - USER=odoo
+      - PASSWORD=odoo      
+      - VIRTUAL_HOST=store.maxtelperu.com
+      - VIRTUAL_PORT=8069
+      - LETSENCRYPT_HOST=store.maxtelperu.com
+      - LETSENCRYPT_EMAIL=store@gmail.com
+
+
+  db:
+    image: postgres:10
+    restart: always
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_USER=odoo
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data/pgdata
+  
+  dbalarma:
+    image: postgres:10
+    restart: always
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_USER=odoo
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - odoo-db-data-alarma:/var/lib/postgresql/data/pgdata
+
+  dbtienda:
+    image: postgres:10
+    restart: always
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_USER=odoo
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - odoo-db-data-tienda:/var/lib/postgresql/data/pgdata
+
+  dbsalud:
+    image: postgres:10
+    restart: always
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_USER=odoo
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - odoo-db-data-salud:/var/lib/postgresql/data/pgdata
+
+
+volumes:
+
+  odoo-web-data-alarma:
+    driver: local      
+  odoo-web-data-salud:
+    driver: local      
+
+  odoo-web-data-tienda:
+    driver: local      
+ 
+  odoo-web-data:
+    driver: local
+  odoo-db-data:
+    driver: local
+  odoo-db-data-alarma:
+    driver: local
+  odoo-db-data-tienda:
+    driver: local
+  odoo-db-data-salud:
+    driver: local
+
+  htpasswd:
+    driver: local  
+  certs:
+    driver: local
+  html:
+    driver: local
+  vhostd:
+    driver: local
+  confd:
+    driver: local
+
